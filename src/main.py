@@ -111,10 +111,13 @@ class Am43Gateway:
     async def _on_ble_notification(self, device_id: str, decoded: DecodedNotification) -> None:
         """Handle decoded BLE notifications received from a motor."""
         if decoded.position is not None:
-            logger.info("[%s] Motor reported position: %d%%", device_id, decoded.position)
-            self.mqtt_manager.publish_position(device_id, decoded.position)
-            if decoded.state:
-                self.mqtt_manager.publish_state(device_id, decoded.state)
+            # Home Assistant standard : 100% = Ouvert, 0% = Fermé
+            # Moteur AM43 standard : 0% = Ouvert, 100% = Fermé
+            ha_pos = max(0, min(100, 100 - decoded.position))
+            logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
+            self.mqtt_manager.publish_position(device_id, ha_pos)
+            state = "closed" if ha_pos == 0 else "open"
+            self.mqtt_manager.publish_state(device_id, state)
 
         if decoded.battery is not None:
             logger.info("[%s] Motor reported battery: %d%%", device_id, decoded.battery)
@@ -133,11 +136,11 @@ class Am43Gateway:
             cmd = payload.upper()
             if cmd == "OPEN":
                 frame = build_open_frame()
-                desc = "OPEN (0%)"
+                desc = "OPEN (HA 100% / Motor 0%)"
                 self.mqtt_manager.publish_state(device_id, "opening")
             elif cmd == "CLOSE":
                 frame = build_close_frame()
-                desc = "CLOSE (100%)"
+                desc = "CLOSE (HA 0% / Motor 100%)"
                 self.mqtt_manager.publish_state(device_id, "closing")
             elif cmd == "STOP":
                 frame = build_stop_frame()
@@ -159,16 +162,19 @@ class Am43Gateway:
 
         elif action == "set_position":
             try:
-                target_pos = int(round(float(payload)))
-                target_pos = max(0, min(100, target_pos))
+                ha_pos = int(round(float(payload)))
+                ha_pos = max(0, min(100, ha_pos))
             except ValueError:
                 logger.warning("[%s] Invalid position value: '%s'", device_id, payload)
                 return
 
-            frame = build_set_position_frame(target_pos)
-            desc = f"SET_POSITION to {target_pos}%"
+            # Conversion vers le repère AM43 (0 = ouvert, 100 = fermé)
+            motor_pos = max(0, min(100, 100 - ha_pos))
+            frame = build_set_position_frame(motor_pos)
+            desc = f"SET_POSITION to HA {ha_pos}% (Motor {motor_pos}%)"
             # Optimistic state update
-            self.mqtt_manager.publish_state(device_id, "opening" if target_pos < 50 else "closing")
+            self.mqtt_manager.publish_state(device_id, "opening" if ha_pos > 50 else "closing")
+            self.mqtt_manager.publish_position(device_id, ha_pos)
 
             task = BleCommandTask(
                 priority=1,
@@ -231,6 +237,11 @@ class Am43Gateway:
         logger.info("Starting AM43 MQTT Gateway with %d devices...", len(self.devices))
         self.ble_worker.start()
         self.mqtt_manager.start()
+
+        # Publier l'état initial pour que Home Assistant active immédiatement les curseurs et contrôles
+        for dev in self.devices:
+            self.mqtt_manager.publish_position(dev["id"], 100)
+            self.mqtt_manager.publish_state(dev["id"], "open")
 
         self._battery_poll_task = asyncio.create_task(
             self._battery_polling_loop(),

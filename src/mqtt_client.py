@@ -141,10 +141,6 @@ class MqttManager:
                 "state_opening": "opening",
                 "state_closing": "closing",
                 "state_stopped": "stopped",
-                # Home Assistant: 0 = Closed, 100 = Open
-                # AM43 Motor: 0 = Open, 100 = Closed
-                "position_open": 0,
-                "position_closed": 100,
                 "availability_topic": self.availability_topic,
                 "payload_available": "online",
                 "payload_not_available": "offline",

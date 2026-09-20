@@ -27,12 +27,12 @@ RESP_HEADER = 0x5A
 CMD_ACTION = 0x0A
 CMD_SET_POSITION = 0x0D
 CMD_QUERY_BATTERY = 0xA2
-CMD_QUERY_POSITION = 0xA1
+CMD_QUERY_POSITION = 0xA7
 
 # Action types
 ACTION_OPEN = 0x00
 ACTION_CLOSE = 0x01
-ACTION_STOP = 0x02
+ACTION_STOP = 0xCC
 
 
 def calculate_xor_checksum(payload: bytes | list[int]) -> int:
@@ -113,8 +113,8 @@ def parse_notification(data: bytes) -> DecodedNotification:
     battery: int | None = None
     state: str | None = None
 
-    # Position notification (typically cmd 0x0D, 0xA8 or 0xA1)
-    if cmd in (CMD_SET_POSITION, 0xA8, 0xA1):
+    # Position notification (typically cmd 0x0D, 0xA8, 0xA1, 0xA7)
+    if cmd in (CMD_SET_POSITION, 0xA8, 0xA1, CMD_QUERY_POSITION):
         if len(data) >= 5:
             # Position byte is typically at index 3 or 4
             pos_candidate = data[3]

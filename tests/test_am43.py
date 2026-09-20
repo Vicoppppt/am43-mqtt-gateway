@@ -46,7 +46,7 @@ class TestAm43Protocol(unittest.TestCase):
 
         stop_frame = build_stop_frame()
         self.assertEqual(stop_frame[1], 0x0A)
-        self.assertEqual(stop_frame[3], 0x02)
+        self.assertEqual(stop_frame[3], 0xCC)
         self.assertTrue(verify_frame_checksum(stop_frame))
 
     def test_build_battery_frame(self):
