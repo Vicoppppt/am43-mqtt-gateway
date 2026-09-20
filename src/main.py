@@ -148,11 +148,12 @@ class Am43Gateway:
                 return
 
             task = BleCommandTask(
+                priority=1,
                 device_id=device_id,
                 mac_address=mac,
                 payload=frame,
                 description=desc,
-                wait_after_send=5.0,
+                wait_after_send=1.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
@@ -170,18 +171,26 @@ class Am43Gateway:
             self.mqtt_manager.publish_state(device_id, "opening" if target_pos < 50 else "closing")
 
             task = BleCommandTask(
+                priority=1,
                 device_id=device_id,
                 mac_address=mac,
                 payload=frame,
                 description=desc,
-                wait_after_send=5.0,
+                wait_after_send=1.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
         elif action == "battery":
             frame = build_battery_query_frame()
             desc = "QUERY_BATTERY"
-            task = BleCommandTask(device_id=device_id, mac_address=mac, payload=frame, description=desc)
+            task = BleCommandTask(
+                priority=10,
+                device_id=device_id,
+                mac_address=mac,
+                payload=frame,
+                description=desc,
+                wait_after_send=0.5,
+            )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
     async def _battery_polling_loop(self) -> None:
@@ -194,8 +203,8 @@ class Am43Gateway:
         interval_seconds = interval_hours * 3600
         logger.info("Starting battery polling task (every %.1f hours)...", interval_hours)
 
-        # Initial battery poll shortly after startup
-        await asyncio.sleep(15.0)
+        # Initial battery poll after 2 minutes to let the gateway settle
+        await asyncio.sleep(120.0)
 
         while not self._stop_event.is_set():
             for dev in self.devices:
@@ -203,10 +212,12 @@ class Am43Gateway:
                 mac = dev["mac"]
                 frame = build_battery_query_frame()
                 task = BleCommandTask(
+                    priority=10,
                     device_id=dev_id,
                     mac_address=mac,
                     payload=frame,
                     description="PERIODIC_BATTERY_QUERY",
+                    wait_after_send=0.5,
                 )
                 await self.ble_worker.enqueue(task)
 

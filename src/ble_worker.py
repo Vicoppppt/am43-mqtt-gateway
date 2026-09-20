@@ -5,7 +5,7 @@ Serializes BLE interactions to avoid race conditions and locks on the host Bluet
 
 from __future__ import annotations
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from typing import Callable, Awaitable
 
@@ -22,13 +22,14 @@ from src.am43 import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(order=True)
 class BleCommandTask:
-    device_id: str
-    mac_address: str
-    payload: bytes
-    description: str
-    wait_after_send: float = 2.0
+    priority: int  # 1 = Commande utilisateur urgente, 10 = Sondage batterie tâche de fond
+    device_id: str = field(compare=False)
+    mac_address: str = field(compare=False)
+    payload: bytes = field(compare=False)
+    description: str = field(compare=False)
+    wait_after_send: float = field(default=1.0, compare=False)
 
 
 NotificationCallback = Callable[[str, DecodedNotification], Awaitable[None]]
@@ -38,10 +39,10 @@ class BleQueueWorker:
     def __init__(
         self,
         notification_callback: NotificationCallback,
-        connect_timeout: float = 15.0,
+        connect_timeout: float = 12.0,
         max_retries: int = 2,
     ) -> None:
-        self.queue: asyncio.Queue[BleCommandTask] = asyncio.Queue()
+        self.queue: asyncio.PriorityQueue[BleCommandTask] = asyncio.PriorityQueue()
         self.notification_callback = notification_callback
         self.connect_timeout = connect_timeout
         self.max_retries = max_retries
