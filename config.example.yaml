@@ -1,0 +1,38 @@
+# =====================================================================
+# AM43 to MQTT Gateway - Configuration
+# =====================================================================
+
+mqtt:
+  # Adresse IP ou nom d'hôte de votre broker MQTT (ex: IP de Home Assistant)
+  host: "192.168.1.50"
+  port: 1883
+  username: "mon_utilisateur_mqtt"
+  password: "mon_mot_de_passe"
+
+  # Racine des topics MQTT pour la passerelle
+  base_topic: "am43"
+
+  # Préfixe de découverte automatique Home Assistant (par défaut: "homeassistant")
+  discovery_prefix: "homeassistant"
+
+  # Identifiant client MQTT
+  client_id: "am43_mqtt_gateway"
+
+devices:
+  - id: "store_droite"
+    name: "Store Droite"
+    mac: "02:21:B8:76:F7:2F"
+
+  - id: "store_gauche"
+    name: "Store Gauche"
+    mac: "02:F6:E1:20:59:C7"
+
+settings:
+  # Timeout de connexion Bluetooth en secondes
+  connect_timeout: 15.0
+
+  # Nombre de tentatives en cas d'échec de commande BLE
+  max_retries: 2
+
+  # Intervalle de récupération automatique du niveau de batterie (en heures, 0 pour désactiver)
+  battery_poll_interval_hours: 4

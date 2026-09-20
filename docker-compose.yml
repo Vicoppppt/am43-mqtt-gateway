@@ -1,0 +1,19 @@
+services:
+  am43-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: am43-mqtt-gateway:latest
+    container_name: am43-gateway
+    restart: unless-stopped
+    # Mode host requis pour accéder au broker local et au démon BlueZ sans bridge NAT
+    network_mode: host
+    environment:
+      - TZ=Europe/Paris
+      - LOG_LEVEL=INFO
+      - CONFIG_PATH=/app/config.yaml
+    volumes:
+      # Accès au bus D-Bus de la machine hôte pour communiquer avec BlueZ
+      - /var/run/dbus:/var/run/dbus
+      # Fichier de configuration local
+      - ./config.yaml:/app/config.yaml:ro
