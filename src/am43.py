@@ -61,13 +61,13 @@ def build_action_frame(action: int) -> bytes:
 
 
 def build_open_frame() -> bytes:
-    """Convenience helper to build OPEN command."""
-    return build_action_frame(ACTION_OPEN)
+    """Convenience helper to build OPEN command (0% position)."""
+    return build_set_position_frame(0)
 
 
 def build_close_frame() -> bytes:
-    """Convenience helper to build CLOSE command."""
-    return build_action_frame(ACTION_CLOSE)
+    """Convenience helper to build CLOSE command (100% position)."""
+    return build_set_position_frame(100)
 
 
 def build_stop_frame() -> bytes:

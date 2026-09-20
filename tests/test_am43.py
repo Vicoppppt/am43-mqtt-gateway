@@ -34,16 +34,18 @@ class TestAm43Protocol(unittest.TestCase):
     def test_build_action_frames(self):
         open_frame = build_open_frame()
         self.assertEqual(open_frame[0], 0x9A)
-        self.assertEqual(open_frame[1], 0x0A)
-        self.assertEqual(open_frame[2], 0x01)
+        self.assertEqual(open_frame[1], 0x0D)
         self.assertEqual(open_frame[3], 0x00)
         self.assertTrue(verify_frame_checksum(open_frame))
 
         close_frame = build_close_frame()
-        self.assertEqual(close_frame[3], 0x01)
+        self.assertEqual(close_frame[0], 0x9A)
+        self.assertEqual(close_frame[1], 0x0D)
+        self.assertEqual(close_frame[3], 100)
         self.assertTrue(verify_frame_checksum(close_frame))
 
         stop_frame = build_stop_frame()
+        self.assertEqual(stop_frame[1], 0x0A)
         self.assertEqual(stop_frame[3], 0x02)
         self.assertTrue(verify_frame_checksum(stop_frame))
 

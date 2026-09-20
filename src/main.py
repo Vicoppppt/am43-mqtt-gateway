@@ -147,7 +147,13 @@ class Am43Gateway:
                 logger.warning("[%s] Unrecognized command payload: '%s'", device_id, payload)
                 return
 
-            task = BleCommandTask(device_id=device_id, mac_address=mac, payload=frame, description=desc)
+            task = BleCommandTask(
+                device_id=device_id,
+                mac_address=mac,
+                payload=frame,
+                description=desc,
+                wait_after_send=5.0,
+            )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
         elif action == "set_position":
@@ -163,7 +169,13 @@ class Am43Gateway:
             # Optimistic state update
             self.mqtt_manager.publish_state(device_id, "opening" if target_pos < 50 else "closing")
 
-            task = BleCommandTask(device_id=device_id, mac_address=mac, payload=frame, description=desc)
+            task = BleCommandTask(
+                device_id=device_id,
+                mac_address=mac,
+                payload=frame,
+                description=desc,
+                wait_after_send=5.0,
+            )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
         elif action == "battery":
