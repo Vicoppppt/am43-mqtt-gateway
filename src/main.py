@@ -4,9 +4,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 import signal
 import sys
 from typing import Any, Dict
+
+# S'assurer que la racine du projet est dans sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import yaml
 
 from src.am43 import (

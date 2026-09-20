@@ -3,6 +3,7 @@ FROM python:3.12-slim
 # Prevent Python from writing pyc files and buffering stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 ENV CONFIG_PATH=/app/config.yaml
 
 # Install system dependencies for BlueZ and D-Bus
@@ -23,4 +24,4 @@ COPY src/ ./src/
 COPY config.example.yaml ./config.example.yaml
 
 # Run the daemon
-CMD ["python", "-u", "src/main.py"]
+CMD ["python", "-u", "-m", "src.main"]
