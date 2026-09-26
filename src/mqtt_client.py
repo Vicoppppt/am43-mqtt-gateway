@@ -144,6 +144,9 @@ class MqttManager:
                 "availability_topic": self.availability_topic,
                 "payload_available": "online",
                 "payload_not_available": "offline",
+                "position_open": 0,
+                "position_closed": 100,
+                "json_attributes_topic": f"{self.base_topic}/{dev_id}/attributes",
                 "device": device_info,
             }
             self.client.publish(
@@ -188,5 +191,9 @@ class MqttManager:
 
     def publish_battery(self, device_id: str, battery: int) -> None:
         """Publish motor battery percentage to MQTT."""
+        # 1. Update the standalone sensor
         topic = f"{self.base_topic}/{device_id}/battery"
         self.client.publish(topic, str(battery), qos=1, retain=True)
+        # 2. Update the cover's attributes
+        attr_topic = f"{self.base_topic}/{device_id}/attributes"
+        self.client.publish(attr_topic, json.dumps({"battery": battery}), qos=1, retain=True)
