@@ -16,6 +16,7 @@ from src.am43 import (
     WRITE_CHAR_UUID,
     NOTIFY_CHAR_UUID,
     parse_notification,
+    build_position_query_frame,
     DecodedNotification,
 )
 
@@ -30,6 +31,10 @@ class BleCommandTask:
     payload: bytes = field(compare=False)
     description: str = field(compare=False)
     wait_after_send: float = field(default=1.0, compare=False)
+    track_movement: bool = field(default=False, compare=False)
+    target_pos: int | None = field(default=None, compare=False)
+    max_track_duration: float = field(default=40.0, compare=False)
+    poll_interval: float = field(default=2.0, compare=False)
 
 
 NotificationCallback = Callable[[str, DecodedNotification], Awaitable[None]]
@@ -126,6 +131,8 @@ class BleQueueWorker:
                         decoded.position,
                         decoded.battery,
                     )
+                    if decoded.position is not None:
+                        setattr(self, f"_last_pos_{task.device_id}", decoded.position)
                     try:
                         await self.notification_callback(task.device_id, decoded)
                     except Exception as err:
@@ -141,7 +148,46 @@ class BleQueueWorker:
                 await client.write_gatt_char(WRITE_CHAR_UUID, task.payload, response=True)
                 logger.info("[%s] Command '%s' sent successfully.", task.device_id, task.description)
 
-                if task.wait_after_send > 0:
+                if task.track_movement:
+                    logger.info(
+                        "[%s] Tracking movement live (polling every %.1fs, target=%s)...",
+                        task.device_id,
+                        task.poll_interval,
+                        task.target_pos,
+                    )
+                    query_frame = build_position_query_frame()
+                    start_time = asyncio.get_running_loop().time()
+                    last_observed_pos: int | None = None
+                    stable_pos_count = 0
+
+                    # Let the motor start moving
+                    await asyncio.sleep(2.0)
+
+                    while (asyncio.get_running_loop().time() - start_time) < task.max_track_duration:
+                        try:
+                            # Send position query frame
+                            await client.write_gatt_char(WRITE_CHAR_UUID, query_frame, response=True)
+                        except Exception as poll_err:
+                            logger.debug("[%s] Position poll error: %s", task.device_id, poll_err)
+
+                        await asyncio.sleep(task.poll_interval)
+
+                        current_pos = getattr(self, f"_last_pos_{task.device_id}", None)
+                        if current_pos is not None:
+                            if task.target_pos is not None and abs(current_pos - task.target_pos) <= 1:
+                                logger.info("[%s] Target position reached: %d%%.", task.device_id, current_pos)
+                                break
+
+                            if current_pos == last_observed_pos:
+                                stable_pos_count += 1
+                                if stable_pos_count >= 2:
+                                    logger.info("[%s] Motor stopped at position: %d%%.", task.device_id, current_pos)
+                                    break
+                            else:
+                                stable_pos_count = 0
+                                last_observed_pos = current_pos
+
+                elif task.wait_after_send > 0:
                     await asyncio.sleep(task.wait_after_send)
 
                 await client.stop_notify(NOTIFY_CHAR_UUID)

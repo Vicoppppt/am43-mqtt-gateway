@@ -119,8 +119,14 @@ class Am43Gateway:
                 device["current_pos"] = ha_pos
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
-            # With position_open: 0 and position_closed: 100:
-            state = "closed" if ha_pos == 100 else "open"
+            # Home Assistant cover state mapping:
+            # 0% = open, 100% = closed. If in between: open if < 50%, closed if >= 50%
+            if ha_pos == 0:
+                state = "open"
+            elif ha_pos == 100:
+                state = "closed"
+            else:
+                state = "open" if ha_pos < 50 else "closed"
             self.mqtt_manager.publish_state(device_id, state)
 
         if decoded.battery is not None:
@@ -138,14 +144,17 @@ class Am43Gateway:
 
         if action == "set":
             cmd = payload.upper()
+            target_pos = None
             if cmd == "OPEN":
                 frame = build_open_frame()
                 desc = "OPEN (HA 100% / Motor 0%)"
                 self.mqtt_manager.publish_state(device_id, "opening")
+                target_pos = 0
             elif cmd == "CLOSE":
                 frame = build_close_frame()
                 desc = "CLOSE (HA 0% / Motor 100%)"
                 self.mqtt_manager.publish_state(device_id, "closing")
+                target_pos = 100
             elif cmd == "STOP":
                 frame = build_stop_frame()
                 desc = "STOP"
@@ -160,24 +169,12 @@ class Am43Gateway:
                 mac_address=mac,
                 payload=frame,
                 description=desc,
-                wait_after_send=1.0,
+                track_movement=(target_pos is not None),
+                target_pos=target_pos,
+                poll_interval=2.0,
+                max_track_duration=45.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
-
-            async def delayed_query_action():
-                await asyncio.sleep(35.0)
-                q_frame = build_position_query_frame()
-                q_task = BleCommandTask(
-                    priority=5,
-                    device_id=device_id,
-                    mac_address=mac,
-                    payload=q_frame,
-                    description="DELAYED_POSITION_QUERY_ACTION",
-                    wait_after_send=0.5,
-                )
-                await self.ble_worker.enqueue(q_task)
-
-            asyncio.run_coroutine_threadsafe(delayed_query_action(), self.loop)
 
         elif action == "set_position":
             try:
@@ -192,20 +189,16 @@ class Am43Gateway:
             frame = build_set_position_frame(motor_pos)
             desc = f"SET_POSITION to HA {ha_pos}% (Motor {motor_pos}%)"
             
-            # Optimistic state update based on current direction
+            # Optimistic state update: indicate movement direction without falsely jumping position
             current_pos = device.get("current_pos", 50)
             if ha_pos < current_pos:
-                # moving towards 0 (Open)
                 predicted_state = "opening"
             elif ha_pos > current_pos:
-                # moving towards 100 (Closed)
                 predicted_state = "closing"
             else:
                 predicted_state = "stopped"
                 
             self.mqtt_manager.publish_state(device_id, predicted_state)
-            self.mqtt_manager.publish_position(device_id, ha_pos)
-            device["current_pos"] = ha_pos
 
             task = BleCommandTask(
                 priority=1,
@@ -213,24 +206,12 @@ class Am43Gateway:
                 mac_address=mac,
                 payload=frame,
                 description=desc,
-                wait_after_send=1.0,
+                track_movement=True,
+                target_pos=motor_pos,
+                poll_interval=2.0,
+                max_track_duration=45.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
-
-            async def delayed_query():
-                await asyncio.sleep(35.0)
-                q_frame = build_position_query_frame()
-                q_task = BleCommandTask(
-                    priority=5,
-                    device_id=device_id,
-                    mac_address=mac,
-                    payload=q_frame,
-                    description="DELAYED_POSITION_QUERY",
-                    wait_after_send=0.5,
-                )
-                await self.ble_worker.enqueue(q_task)
-
-            asyncio.run_coroutine_threadsafe(delayed_query(), self.loop)
 
         elif action == "battery":
             frame = build_battery_query_frame()
