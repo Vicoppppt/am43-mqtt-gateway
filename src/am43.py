@@ -80,6 +80,11 @@ def build_battery_query_frame() -> bytes:
     return build_frame([CMD_HEADER, CMD_QUERY_BATTERY, 0x01, 0x01])
 
 
+def build_position_query_frame() -> bytes:
+    """Build position query frame."""
+    return build_frame([CMD_HEADER, CMD_QUERY_POSITION, 0x01, 0x01])
+
+
 def verify_frame_checksum(data: bytes) -> bool:
     """Verify if the last byte matches the XOR checksum of all preceding bytes."""
     if len(data) < 2:
@@ -113,8 +118,9 @@ def parse_notification(data: bytes) -> DecodedNotification:
     battery: int | None = None
     state: str | None = None
 
-    # Position notification (typically cmd 0x0D, 0xA8, 0xA1, 0xA7)
-    if cmd in (CMD_SET_POSITION, 0xA8, 0xA1, CMD_QUERY_POSITION):
+    # Position notification (0xA8, 0xA1, 0xA7). 
+    # We purposefully IGNORE 0x0D (CMD_SET_POSITION) because it's an immediate echo of the CURRENT position which breaks the UI slider.
+    if cmd in (0xA8, 0xA1, CMD_QUERY_POSITION):
         if len(data) >= 5:
             # Position byte is typically at index 3 or 4
             pos_candidate = data[3]

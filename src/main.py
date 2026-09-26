@@ -20,6 +20,7 @@ from src.am43 import (
     build_close_frame,
     build_stop_frame,
     build_battery_query_frame,
+    build_position_query_frame,
     DecodedNotification,
 )
 from src.ble_worker import BleQueueWorker, BleCommandTask
@@ -159,6 +160,21 @@ class Am43Gateway:
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
+            async def delayed_query_action():
+                await asyncio.sleep(20.0)
+                q_frame = build_position_query_frame()
+                q_task = BleCommandTask(
+                    priority=5,
+                    device_id=device_id,
+                    mac_address=mac,
+                    payload=q_frame,
+                    description="DELAYED_POSITION_QUERY_ACTION",
+                    wait_after_send=0.5,
+                )
+                await self.ble_worker.enqueue(q_task)
+
+            asyncio.run_coroutine_threadsafe(delayed_query_action(), self.loop)
+
         elif action == "set_position":
             try:
                 ha_pos = int(round(float(payload)))
@@ -184,6 +200,21 @@ class Am43Gateway:
                 wait_after_send=1.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
+
+            async def delayed_query():
+                await asyncio.sleep(20.0)
+                q_frame = build_position_query_frame()
+                q_task = BleCommandTask(
+                    priority=5,
+                    device_id=device_id,
+                    mac_address=mac,
+                    payload=q_frame,
+                    description="DELAYED_POSITION_QUERY",
+                    wait_after_send=0.5,
+                )
+                await self.ble_worker.enqueue(q_task)
+
+            asyncio.run_coroutine_threadsafe(delayed_query(), self.loop)
 
         elif action == "battery":
             frame = build_battery_query_frame()
