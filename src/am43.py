@@ -121,16 +121,21 @@ def parse_notification(data: bytes) -> DecodedNotification:
     state: str | None = None
 
     # Position notification (0xA1 notify, 0xA7 position query, 0xA8).
-    # Typical A1 frame: [0x9A, 0xA1, 0x07, <status/speed>, <position>, <checksum>]
-    # or query reply: [0x9A, 0xA7, <len>, ..., <position>, ...]
+    # Typical A7 reply: [0x9A, 0xA7, 0x07, <status/flags>, <speed/param>, <actual_pos>, ...]
+    # Example: 9aa7070f3234... -> byte 3=0x0f, byte 4=0x32 (50 speed), byte 5=0x34 (52% actual pos)
+    # Typical A1 frame: [0x9A, 0xA1, 0x07, <status>, <speed>, <actual_pos>, ...]
     if cmd in (0xA1, CMD_QUERY_POSITION, 0xA8):
-        if len(data) >= 6:
-            # Check byte 4 first (standard AM43 protocol: 9a a1 len status/speed position ...)
+        if len(data) >= 7:
+            # Long format with flags and speed/param: position is at byte 5 (index 5)
+            candidate = data[5]
+            if 0 <= candidate <= 100:
+                position = candidate
+            elif 0 <= data[4] <= 100:
+                position = data[4]
+        elif len(data) == 6:
             candidate = data[4]
             if 0 <= candidate <= 100:
                 position = candidate
-            elif 0 <= data[3] <= 100 and len(data) == 5:
-                position = data[3]
         elif len(data) == 5:
             # Short format: [header, cmd, len, pos, checksum]
             candidate = data[3]

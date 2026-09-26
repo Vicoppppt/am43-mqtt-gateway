@@ -165,7 +165,7 @@ class Am43Gateway:
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
             async def delayed_query_action():
-                await asyncio.sleep(20.0)
+                await asyncio.sleep(35.0)
                 q_frame = build_position_query_frame()
                 q_task = BleCommandTask(
                     priority=5,
@@ -218,7 +218,7 @@ class Am43Gateway:
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
 
             async def delayed_query():
-                await asyncio.sleep(20.0)
+                await asyncio.sleep(35.0)
                 q_frame = build_position_query_frame()
                 q_task = BleCommandTask(
                     priority=5,

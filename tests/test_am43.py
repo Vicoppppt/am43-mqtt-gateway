@@ -56,8 +56,8 @@ class TestAm43Protocol(unittest.TestCase):
         self.assertTrue(verify_frame_checksum(frame))
 
     def test_parse_position_notification(self):
-        # 1. Standard AM43 telemetry frame (0xA1): [0x9a, 0xa1, 0x07, <status>, <pos=85>, ...]
-        payload = [0x9A, 0xA1, 0x07, 0x0F, 85, 0x00, 0x00]
+        # 1. Standard AM43 telemetry frame (0xA1): [0x9a, 0xa1, 0x07, <status>, <speed>, <pos=85>, ...]
+        payload = [0x9A, 0xA1, 0x07, 0x0F, 0x32, 85, 0x00]
         cs = calculate_xor_checksum(payload)
         frame = bytes(payload + [cs])
 
@@ -66,15 +66,22 @@ class TestAm43Protocol(unittest.TestCase):
         self.assertEqual(res.state, "open")
 
         # 2. Position closed (100)
-        payload_closed = [0x9A, 0xA1, 0x07, 0x0F, 100, 0x00, 0x00]
+        payload_closed = [0x9A, 0xA1, 0x07, 0x0F, 0x32, 100, 0x00]
         cs_closed = calculate_xor_checksum(payload_closed)
         frame_closed = bytes(payload_closed + [cs_closed])
         res_closed = parse_notification(frame_closed)
         self.assertEqual(res_closed.position, 100)
         self.assertEqual(res_closed.state, "open")
 
-        # 3. Position query reply (0xA7)
-        payload_query = [0x9A, 0xA7, 0x07, 0x00, 0, 0x00, 0x00]
+        # 3. Position query reply (0xA7) from real device: 9aa7070f323400000d102e
+        # Byte 3=0x0f (flags), Byte 4=0x32 (speed=50), Byte 5=0x34 (pos=52%)
+        frame_real = bytes.fromhex("9aa7070f323400000d102e")
+        res_real = parse_notification(frame_real)
+        self.assertEqual(res_real.position, 0x34)  # 52%
+        self.assertEqual(res_real.state, "open")
+
+        # 4. Position closed (0) in 7-byte format
+        payload_query = [0x9A, 0xA7, 0x07, 0x0F, 0x32, 0, 0x00]
         cs_query = calculate_xor_checksum(payload_query)
         frame_query = bytes(payload_query + [cs_query])
         res_query = parse_notification(frame_query)
