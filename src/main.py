@@ -114,6 +114,19 @@ class Am43Gateway:
         if decoded.position is not None:
             ha_pos = decoded.position
             device = self.devices_by_id.get(device_id)
+            target = device.get("target_pos") if device else None
+
+            # 1. Tolérance de butées physiques : si le moteur s'arrête à 99% ou 1%
+            if not is_moving:
+                if ha_pos >= 99:
+                    ha_pos = 100
+                elif ha_pos <= 1:
+                    ha_pos = 0
+
+            # 2. Tolérance sur la consigne demandée par l'utilisateur (ex: 75% demandé vs 76% renvoyé par l'encodeur)
+            if target is not None and abs(ha_pos - target) <= 1:
+                ha_pos = target
+
             prev_pos = device.get("current_pos", ha_pos) if device else ha_pos
             if device:
                 device["current_pos"] = ha_pos
@@ -133,8 +146,6 @@ class Am43Gateway:
                 elif ha_pos > prev_pos:
                     state = "closing"
                 else:
-                    # Maintient l'état précédent ou déduit de la cible
-                    target = device.get("target_pos") if device else None
                     if target is not None:
                         state = "opening" if target < ha_pos else "closing"
                     else:
