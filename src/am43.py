@@ -106,11 +106,13 @@ def parse_notification(data: bytes) -> DecodedNotification:
     if len(data) < 4:
         return DecodedNotification(raw_hex=raw_hex)
 
-    if not verify_frame_checksum(data):
+    cmd = data[1] if len(data) > 1 else None
+    valid_checksum = verify_frame_checksum(data)
+    if not valid_checksum and cmd != CMD_SET_POSITION:
         logger.warning("Notification received with invalid checksum: %s", raw_hex)
 
     header = data[0]
-    if header != RESP_HEADER:
+    if header not in (RESP_HEADER, CMD_HEADER):
         logger.debug("Received frame with non-standard header 0x%02x: %s", header, raw_hex)
 
     cmd = data[1]
@@ -118,14 +120,29 @@ def parse_notification(data: bytes) -> DecodedNotification:
     battery: int | None = None
     state: str | None = None
 
-    # Position notification (0xA8, 0xA1, 0xA7). 
-    # We purposefully IGNORE 0x0D (CMD_SET_POSITION) because it's an immediate echo of the CURRENT position which breaks the UI slider.
-    if cmd in (0xA8, 0xA1, CMD_QUERY_POSITION):
-        if len(data) >= 5:
-            # Position byte is typically at index 3 or 4
-            pos_candidate = data[3]
-            if 0 <= pos_candidate <= 100:
-                position = pos_candidate
+    # Position notification (0xA1 notify, 0xA7 position query, 0xA8).
+    # Typical A1 frame: [0x9A, 0xA1, 0x07, <status/speed>, <position>, <checksum>]
+    # or query reply: [0x9A, 0xA7, <len>, ..., <position>, ...]
+    if cmd in (0xA1, CMD_QUERY_POSITION, 0xA8):
+        if len(data) >= 6:
+            # Check byte 4 first (standard AM43 protocol: 9a a1 len status/speed position ...)
+            candidate = data[4]
+            if 0 <= candidate <= 100:
+                position = candidate
+            elif 0 <= data[3] <= 100 and len(data) == 5:
+                position = data[3]
+        elif len(data) == 5:
+            # Short format: [header, cmd, len, pos, checksum]
+            candidate = data[3]
+            if 0 <= candidate <= 100:
+                position = candidate
+
+    # Command ACK / status notification (cmd 0x0D)
+    elif cmd == CMD_SET_POSITION:
+        # Some motors echo ACK with status 0x5A or an updated position
+        if len(data) >= 4 and data[3] == RESP_HEADER:
+            # Command acknowledged (ACK 0x5A)
+            state = "acknowledged"
 
     # Battery notification (cmd 0xA2)
     elif cmd == CMD_QUERY_BATTERY:
@@ -143,9 +160,9 @@ def parse_notification(data: bytes) -> DecodedNotification:
 
     if position is not None:
         if position == 0:
-            state = "open"
-        elif position == 100:
             state = "closed"
+        elif position == 100:
+            state = "open"
         else:
             state = "open"
 

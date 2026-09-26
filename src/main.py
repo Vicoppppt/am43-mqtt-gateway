@@ -119,7 +119,8 @@ class Am43Gateway:
                 device["current_pos"] = ha_pos
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
-            state = "closed" if ha_pos == 0 else "open"
+            # With position_open: 0 and position_closed: 100:
+            state = "closed" if ha_pos == 100 else "open"
             self.mqtt_manager.publish_state(device_id, state)
 
         if decoded.battery is not None:

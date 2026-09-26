@@ -117,8 +117,15 @@ class BleQueueWorker:
 
                 async def _on_notify(_sender: int, data: bytearray) -> None:
                     raw_bytes = bytes(data)
-                    logger.debug("[%s] Raw BLE notification: %s", task.device_id, raw_bytes.hex())
                     decoded = parse_notification(raw_bytes)
+                    logger.info(
+                        "[%s] Received BLE notification: %s (cmd=0x%02X, pos=%s, batt=%s)",
+                        task.device_id,
+                        raw_bytes.hex(),
+                        decoded.cmd if decoded.cmd is not None else 0,
+                        decoded.position,
+                        decoded.battery,
+                    )
                     try:
                         await self.notification_callback(task.device_id, decoded)
                     except Exception as err:

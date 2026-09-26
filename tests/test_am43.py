@@ -56,14 +56,37 @@ class TestAm43Protocol(unittest.TestCase):
         self.assertTrue(verify_frame_checksum(frame))
 
     def test_parse_position_notification(self):
-        # Simulated position notification: 0x5a, 0x0d, 0x01, 30%, checksum
-        payload = [0x5A, 0x0D, 0x01, 30]
+        # 1. Standard AM43 telemetry frame (0xA1): [0x9a, 0xa1, 0x07, <status>, <pos=85>, ...]
+        payload = [0x9A, 0xA1, 0x07, 0x0F, 85, 0x00, 0x00]
         cs = calculate_xor_checksum(payload)
         frame = bytes(payload + [cs])
 
         res = parse_notification(frame)
-        self.assertEqual(res.position, 30)
+        self.assertEqual(res.position, 85)
         self.assertEqual(res.state, "open")
+
+        # 2. Position closed (100)
+        payload_closed = [0x9A, 0xA1, 0x07, 0x0F, 100, 0x00, 0x00]
+        cs_closed = calculate_xor_checksum(payload_closed)
+        frame_closed = bytes(payload_closed + [cs_closed])
+        res_closed = parse_notification(frame_closed)
+        self.assertEqual(res_closed.position, 100)
+        self.assertEqual(res_closed.state, "open")
+
+        # 3. Position query reply (0xA7)
+        payload_query = [0x9A, 0xA7, 0x07, 0x00, 0, 0x00, 0x00]
+        cs_query = calculate_xor_checksum(payload_query)
+        frame_query = bytes(payload_query + [cs_query])
+        res_query = parse_notification(frame_query)
+        self.assertEqual(res_query.position, 0)
+        self.assertEqual(res_query.state, "closed")
+
+    def test_parse_set_position_ack(self):
+        # ACK frame received: 9a 0d 01 5a 31
+        frame = bytes.fromhex("9a0d015a31")
+        res = parse_notification(frame)
+        self.assertEqual(res.cmd, 0x0D)
+        self.assertEqual(res.state, "acknowledged")
 
     def test_parse_battery_notification(self):
         # Simulated battery notification: 0x5a, 0xa2, 0x01, 85%, checksum
