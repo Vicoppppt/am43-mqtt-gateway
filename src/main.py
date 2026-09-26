@@ -111,9 +111,8 @@ class Am43Gateway:
     async def _on_ble_notification(self, device_id: str, decoded: DecodedNotification) -> None:
         """Handle decoded BLE notifications received from a motor."""
         if decoded.position is not None:
-            # Home Assistant standard : 100% = Ouvert, 0% = Fermé
-            # Moteur AM43 standard : 0% = Ouvert, 100% = Fermé
-            ha_pos = max(0, min(100, 100 - decoded.position))
+            # The motor native range (0 = open, 100 = closed) is passed to HA natively
+            ha_pos = decoded.position
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
             state = "closed" if ha_pos == 0 else "open"
@@ -168,8 +167,8 @@ class Am43Gateway:
                 logger.warning("[%s] Invalid position value: '%s'", device_id, payload)
                 return
 
-            # Conversion vers le repère AM43 (0 = ouvert, 100 = fermé)
-            motor_pos = max(0, min(100, 100 - ha_pos))
+            # Pass through the exact position received from HA
+            motor_pos = ha_pos
             frame = build_set_position_frame(motor_pos)
             desc = f"SET_POSITION to HA {ha_pos}% (Motor {motor_pos}%)"
             # Optimistic state update

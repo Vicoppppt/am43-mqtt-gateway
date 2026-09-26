@@ -157,27 +157,15 @@ class MqttManager:
             )
             logger.info("Published Home Assistant Discovery for Cover: %s", cover_discovery_topic)
 
-            # 2. Battery Sensor Entity
+            # 2. Delete the old Battery Sensor Entity (since we moved it to attributes)
             battery_discovery_topic = f"{self.discovery_prefix}/sensor/{dev_id}_battery/config"
-            battery_payload = {
-                "name": f"{name} Batterie",
-                "unique_id": f"am43_{dev_id}_battery",
-                "device_class": "battery",
-                "state_class": "measurement",
-                "unit_of_measurement": "%",
-                "state_topic": f"{self.base_topic}/{dev_id}/battery",
-                "availability_topic": self.availability_topic,
-                "payload_available": "online",
-                "payload_not_available": "offline",
-                "device": device_info,
-            }
             self.client.publish(
                 battery_discovery_topic,
-                json.dumps(battery_payload),
+                "",
                 qos=1,
                 retain=True,
             )
-            logger.info("Published Home Assistant Discovery for Battery: %s", battery_discovery_topic)
+            logger.info("Deleted standalone HA Discovery Battery sensor for %s", dev_id)
 
     def publish_position(self, device_id: str, position: int) -> None:
         """Publish motor position to MQTT."""
