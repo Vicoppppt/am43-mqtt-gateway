@@ -114,6 +114,9 @@ class Am43Gateway:
         if decoded.position is not None:
             # The motor native range (0 = open, 100 = closed) is passed to HA natively
             ha_pos = decoded.position
+            device = self.devices_by_id.get(device_id)
+            if device:
+                device["current_pos"] = ha_pos
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
             state = "closed" if ha_pos == 0 else "open"
@@ -187,9 +190,21 @@ class Am43Gateway:
             motor_pos = ha_pos
             frame = build_set_position_frame(motor_pos)
             desc = f"SET_POSITION to HA {ha_pos}% (Motor {motor_pos}%)"
-            # Optimistic state update
-            self.mqtt_manager.publish_state(device_id, "opening" if ha_pos > 50 else "closing")
+            
+            # Optimistic state update based on current direction
+            current_pos = device.get("current_pos", 50)
+            if ha_pos < current_pos:
+                # moving towards 0 (Open)
+                predicted_state = "opening"
+            elif ha_pos > current_pos:
+                # moving towards 100 (Closed)
+                predicted_state = "closing"
+            else:
+                predicted_state = "stopped"
+                
+            self.mqtt_manager.publish_state(device_id, predicted_state)
             self.mqtt_manager.publish_position(device_id, ha_pos)
+            device["current_pos"] = ha_pos
 
             task = BleCommandTask(
                 priority=1,
@@ -268,10 +283,23 @@ class Am43Gateway:
         self.ble_worker.start()
         self.mqtt_manager.start()
 
-        # Publier l'état initial pour que Home Assistant active immédiatement les curseurs et contrôles
+        # Initialize device state and query true position
         for dev in self.devices:
-            self.mqtt_manager.publish_position(dev["id"], 100)
-            self.mqtt_manager.publish_state(dev["id"], "open")
+            dev_id = dev["id"]
+            mac = dev["mac"]
+            dev["current_pos"] = 50
+            
+            # Send initial position query
+            frame = build_position_query_frame()
+            task = BleCommandTask(
+                priority=2,
+                device_id=dev_id,
+                mac_address=mac,
+                payload=frame,
+                description="STARTUP_POSITION_QUERY",
+                wait_after_send=0.5,
+            )
+            asyncio.create_task(self.ble_worker.enqueue(task))
 
         self._battery_poll_task = asyncio.create_task(
             self._battery_polling_loop(),
