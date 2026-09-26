@@ -109,26 +109,42 @@ class Am43Gateway:
         self._battery_poll_task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
 
-    async def _on_ble_notification(self, device_id: str, decoded: DecodedNotification) -> None:
+    async def _on_ble_notification(self, device_id: str, decoded: DecodedNotification, is_moving: bool = False) -> None:
         """Handle decoded BLE notifications received from a motor."""
         if decoded.position is not None:
             ha_pos = decoded.position
             device = self.devices_by_id.get(device_id)
+            prev_pos = device.get("current_pos", ha_pos) if device else ha_pos
             if device:
                 device["current_pos"] = ha_pos
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
             
-            # État strict :
-            # 0% = ouvert (position_open: 0)
-            # 100% = fermé (position_closed: 100)
-            # Entre les deux (1%..99%) = état open (partiellement ouvert)
-            if ha_pos == 100:
-                state = "closed"
-            elif ha_pos == 0:
-                state = "open"
+            # Détection dynamique du statut :
+            # Pendant le mouvement (is_moving=True) :
+            #   - Si la position diminue vers 0 : 'opening' (Ouverture)
+            #   - Si la position augmente vers 100 : 'closing' (Fermeture)
+            # Quand le mouvement est terminé (is_moving=False) :
+            #   - 100% : 'closed' (Fermé)
+            #   - 0%..99% : 'open' (Ouvert)
+            if is_moving:
+                if ha_pos < prev_pos:
+                    state = "opening"
+                elif ha_pos > prev_pos:
+                    state = "closing"
+                else:
+                    # Maintient l'état précédent ou déduit de la cible
+                    target = device.get("target_pos") if device else None
+                    if target is not None:
+                        state = "opening" if target < ha_pos else "closing"
+                    else:
+                        state = "opening" if ha_pos > 0 else "closed"
             else:
-                state = "open"
+                if ha_pos == 100:
+                    state = "closed"
+                else:
+                    state = "open"
+
             self.mqtt_manager.publish_state(device_id, state)
 
         if decoded.battery is not None:
@@ -152,15 +168,18 @@ class Am43Gateway:
                 desc = "OPEN (HA 100% / Motor 0%)"
                 self.mqtt_manager.publish_state(device_id, "opening")
                 target_pos = 0
+                device["target_pos"] = target_pos
             elif cmd == "CLOSE":
                 frame = build_close_frame()
                 desc = "CLOSE (HA 0% / Motor 100%)"
                 self.mqtt_manager.publish_state(device_id, "closing")
                 target_pos = 100
+                device["target_pos"] = target_pos
             elif cmd == "STOP":
                 frame = build_stop_frame()
                 desc = "STOP"
                 self.mqtt_manager.publish_state(device_id, "stopped")
+                device["target_pos"] = None
             else:
                 logger.warning("[%s] Unrecognized command payload: '%s'", device_id, payload)
                 return
@@ -173,7 +192,7 @@ class Am43Gateway:
                 description=desc,
                 track_movement=(target_pos is not None),
                 target_pos=target_pos,
-                poll_interval=2.0,
+                poll_interval=0.5,
                 max_track_duration=45.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)
@@ -188,6 +207,7 @@ class Am43Gateway:
 
             # Pass through the exact position received from HA
             motor_pos = ha_pos
+            device["target_pos"] = motor_pos
             frame = build_set_position_frame(motor_pos)
             desc = f"SET_POSITION to HA {ha_pos}% (Motor {motor_pos}%)"
             
@@ -210,7 +230,7 @@ class Am43Gateway:
                 description=desc,
                 track_movement=True,
                 target_pos=motor_pos,
-                poll_interval=2.0,
+                poll_interval=0.5,
                 max_track_duration=45.0,
             )
             asyncio.run_coroutine_threadsafe(self.ble_worker.enqueue(task), self.loop)

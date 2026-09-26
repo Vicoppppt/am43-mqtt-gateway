@@ -37,7 +37,8 @@ class BleCommandTask:
     poll_interval: float = field(default=2.0, compare=False)
 
 
-NotificationCallback = Callable[[str, DecodedNotification], Awaitable[None]]
+NotificationCallback = Callable[..., Awaitable[None]]
+# callback(device_id, decoded, is_moving=False)
 
 
 class BleQueueWorker:
@@ -120,6 +121,8 @@ class BleQueueWorker:
 
                 logger.debug("[%s] Connected. Subscribing to notifications...", task.device_id)
 
+                is_actively_moving = False
+
                 async def _on_notify(_sender: int, data: bytearray) -> None:
                     raw_bytes = bytes(data)
                     decoded = parse_notification(raw_bytes)
@@ -134,7 +137,7 @@ class BleQueueWorker:
                     if decoded.position is not None:
                         setattr(self, f"_last_pos_{task.device_id}", decoded.position)
                     try:
-                        await self.notification_callback(task.device_id, decoded)
+                        await self.notification_callback(task.device_id, decoded, is_actively_moving)
                     except Exception as err:
                         logger.error("[%s] Notification callback error: %s", task.device_id, err)
 
@@ -149,6 +152,7 @@ class BleQueueWorker:
                 logger.info("[%s] Command '%s' sent successfully.", task.device_id, task.description)
 
                 if task.track_movement:
+                    is_actively_moving = True
                     logger.info(
                         "[%s] Tracking movement live (polling every %.1fs, target=%s)...",
                         task.device_id,
@@ -161,7 +165,7 @@ class BleQueueWorker:
                     stable_pos_count = 0
 
                     # Let the motor start moving
-                    await asyncio.sleep(2.0)
+                    await asyncio.sleep(1.0)
 
                     while (asyncio.get_running_loop().time() - start_time) < task.max_track_duration:
                         try:
@@ -180,12 +184,23 @@ class BleQueueWorker:
 
                             if current_pos == last_observed_pos:
                                 stable_pos_count += 1
-                                if stable_pos_count >= 2:
+                                # 4 consecutive identical readings at 0.5s = 2s of stability
+                                if stable_pos_count >= 4:
                                     logger.info("[%s] Motor stopped at position: %d%%.", task.device_id, current_pos)
                                     break
                             else:
                                 stable_pos_count = 0
                                 last_observed_pos = current_pos
+
+                    is_actively_moving = False
+                    # Final notification with is_moving=False to publish final open/closed state
+                    final_pos = getattr(self, f"_last_pos_{task.device_id}", None)
+                    if final_pos is not None:
+                        await self.notification_callback(
+                            task.device_id,
+                            DecodedNotification(raw_hex="", position=final_pos),
+                            False,
+                        )
 
                 elif task.wait_after_send > 0:
                     await asyncio.sleep(task.wait_after_send)
