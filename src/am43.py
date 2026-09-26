@@ -165,9 +165,9 @@ def parse_notification(data: bytes) -> DecodedNotification:
 
     if position is not None:
         if position == 0:
-            state = "closed"
-        elif position == 100:
             state = "open"
+        elif position == 100:
+            state = "closed"
         else:
             state = "open"
 

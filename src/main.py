@@ -112,21 +112,23 @@ class Am43Gateway:
     async def _on_ble_notification(self, device_id: str, decoded: DecodedNotification) -> None:
         """Handle decoded BLE notifications received from a motor."""
         if decoded.position is not None:
-            # The motor native range (0 = open, 100 = closed) is passed to HA natively
             ha_pos = decoded.position
             device = self.devices_by_id.get(device_id)
             if device:
                 device["current_pos"] = ha_pos
             logger.info("[%s] Motor reported position: %d%% (HA position: %d%%)", device_id, decoded.position, ha_pos)
             self.mqtt_manager.publish_position(device_id, ha_pos)
-            # Home Assistant cover state mapping:
-            # 0% = open, 100% = closed. If in between: open if < 50%, closed if >= 50%
-            if ha_pos == 0:
-                state = "open"
-            elif ha_pos == 100:
+            
+            # État strict :
+            # 0% = ouvert (position_open: 0)
+            # 100% = fermé (position_closed: 100)
+            # Entre les deux (1%..99%) = état open (partiellement ouvert)
+            if ha_pos == 100:
                 state = "closed"
+            elif ha_pos == 0:
+                state = "open"
             else:
-                state = "open" if ha_pos < 50 else "closed"
+                state = "open"
             self.mqtt_manager.publish_state(device_id, state)
 
         if decoded.battery is not None:

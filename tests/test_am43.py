@@ -71,7 +71,7 @@ class TestAm43Protocol(unittest.TestCase):
         frame_closed = bytes(payload_closed + [cs_closed])
         res_closed = parse_notification(frame_closed)
         self.assertEqual(res_closed.position, 100)
-        self.assertEqual(res_closed.state, "open")
+        self.assertEqual(res_closed.state, "closed")
 
         # 3. Position query reply (0xA7) from real device: 9aa7070f323400000d102e
         # Byte 3=0x0f (flags), Byte 4=0x32 (speed=50), Byte 5=0x34 (pos=52%)
@@ -80,13 +80,13 @@ class TestAm43Protocol(unittest.TestCase):
         self.assertEqual(res_real.position, 0x34)  # 52%
         self.assertEqual(res_real.state, "open")
 
-        # 4. Position closed (0) in 7-byte format
+        # 4. Position open (0) in 7-byte format
         payload_query = [0x9A, 0xA7, 0x07, 0x0F, 0x32, 0, 0x00]
         cs_query = calculate_xor_checksum(payload_query)
         frame_query = bytes(payload_query + [cs_query])
         res_query = parse_notification(frame_query)
         self.assertEqual(res_query.position, 0)
-        self.assertEqual(res_query.state, "closed")
+        self.assertEqual(res_query.state, "open")
 
     def test_parse_set_position_ack(self):
         # ACK frame received: 9a 0d 01 5a 31
